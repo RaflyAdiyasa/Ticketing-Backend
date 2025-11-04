@@ -32,7 +32,7 @@ func SetupRoutes(app *fiber.App) {
     ticket := app.Group("/api/tickets", middleware.AuthMiddleware)
     ticket.Post("/", handlers.CreateTicketCategory)
     ticket.Get("/", handlers.GetTickets)
-    ticket.Get("/:id", handlers.GetEvent) // Reusing GetEvent handler
+    ticket.Get("/:id", handlers.GetEvent) 
     ticket.Patch("/:id/checkin", handlers.CheckInTicket)
     
     // Cart routes

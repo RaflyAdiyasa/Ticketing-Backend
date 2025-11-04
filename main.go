@@ -53,7 +53,7 @@ func migrateDatabase(db *gorm.DB) error {
     if err != nil {
         return err
     }
-
+	
     err = db.AutoMigrate(&models.Cart{})
     if err != nil {
         return err
