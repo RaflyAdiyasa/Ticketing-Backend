@@ -62,6 +62,13 @@ func VerifyUser(c *fiber.Ctx) error {
             "error": "User not found",
         })
     }
+
+    // Only organizers need verification
+    if user.Role != "organizer" {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "error": "Only organizer accounts can be verified",
+        })
+    }
     
     var req struct {
         Status  string `json:"status"`
@@ -82,7 +89,16 @@ func VerifyUser(c *fiber.Ctx) error {
     }
     
     return c.JSON(fiber.Map{
-        "message": "User verification updated",
-        "user":    user,
+        "message": "Organizer verification updated",
+        "user": fiber.Map{
+            "user_id":        user.UserID,
+            "username":       user.Username,
+            "name":           user.Name,
+            "email":          user.Email,
+            "role":           user.Role,
+            "organization":   user.Organization,
+            "ktp":            user.KTP,
+            "register_status": user.RegisterStatus,
+        },
     })
 }

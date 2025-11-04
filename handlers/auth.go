@@ -23,8 +23,10 @@ type RegisterRequest struct {
 	Name             string `json:"name"`
 	Email            string `json:"email"`
 	Password         string `json:"password"`
-	Organization     string `json:"organization"`
-	OrganizationType string `json:"organization_type"`
+	Role             string `json:"role"`                        // user, organizer
+	Organization     string `json:"organization,omitempty"`      // Wajib untuk organizer
+	OrganizationType string `json:"organization_type,omitempty"` // Wajib untuk organizer
+	KTP              string `json:"ktp,omitempty"`               // Wajib untuk organizer
 }
 
 func Register(c *fiber.Ctx) error {
@@ -33,6 +35,27 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid request",
 		})
+	}
+
+	// Validate role
+	if req.Role != "user" && req.Role != "organizer" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Role must be either 'user' or 'organizer'",
+		})
+	}
+
+	// Validasi Organization & KTP untuk organizer
+	if req.Role == "organizer" {
+		if req.KTP == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "KTP is required for organizer registration",
+			})
+		}
+		if req.Organization == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Organization is required for organizer registration",
+			})
+		}
 	}
 
 	// Check if user already exists
@@ -50,15 +73,22 @@ func Register(c *fiber.Ctx) error {
 		})
 	}
 
+	// Set register status based on role
+	registerStatus := "approved" // user langsung approved
+	if req.Role == "organizer" {
+		registerStatus = "pending" // organizer perlu approval admin
+	}
+
 	user := models.User{
 		Username:         req.Username,
 		Name:             req.Name,
 		Email:            req.Email,
 		Password:         hashedPassword,
+		Role:             req.Role,
 		Organization:     req.Organization,
 		OrganizationType: req.OrganizationType,
-		RegisterStatus:   "pending",
-		Role:             "user",
+		KTP:              req.KTP,
+		RegisterStatus:   registerStatus,
 	}
 
 	if err := config.DB.Create(&user).Error; err != nil {
@@ -70,10 +100,12 @@ func Register(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "User registered successfully",
 		"user": fiber.Map{
-			"user_id":  user.UserID,
-			"username": user.Username,
-			"name":     user.Name,
-			"email":    user.Email,
+			"user_id":         user.UserID,
+			"username":        user.Username,
+			"name":            user.Name,
+			"email":           user.Email,
+			"role":            user.Role,
+			"register_status": user.RegisterStatus,
 		},
 	})
 }
@@ -99,9 +131,10 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	if user.RegisterStatus != "approved" {
+	// Check approval status for organizer
+	if user.Role == "organizer" && user.RegisterStatus != "approved" {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-			"error": "Account not approved yet",
+			"error": "Organizer account not approved yet",
 		})
 	}
 
@@ -126,20 +159,16 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
-	// Update user tokens
-	config.DB.Model(&user).Updates(models.User{
-		AccessToken: tokenString,
-	})
-
 	return c.JSON(fiber.Map{
 		"message": "Login successful",
 		"token":   tokenString,
 		"user": fiber.Map{
-			"user_id":  user.UserID,
-			"username": user.Username,
-			"name":     user.Name,
-			"email":    user.Email,
-			"role":     user.Role,
+			"user_id":         user.UserID,
+			"username":        user.Username,
+			"name":            user.Name,
+			"email":           user.Email,
+			"role":            user.Role,
+			"register_status": user.RegisterStatus,
 		},
 	})
 }
