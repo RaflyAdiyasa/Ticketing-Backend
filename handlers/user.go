@@ -57,7 +57,7 @@ func VerifyUser(c *fiber.Ctx) error {
     userID := c.Params("id")
     
     var user models.User
-    if err := config.DB.First(&user, userID).Error; err != nil {
+    if err := config.DB.First(&user, "user_id = ?", userID).Error; err != nil {
         return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
             "error": "User not found",
         })
@@ -82,6 +82,8 @@ func VerifyUser(c *fiber.Ctx) error {
     }
     
     user.RegisterStatus = req.Status
+    user.RegisterComment = req.Comment
+    
     if err := config.DB.Save(&user).Error; err != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "error": "Failed to verify user",
@@ -91,14 +93,15 @@ func VerifyUser(c *fiber.Ctx) error {
     return c.JSON(fiber.Map{
         "message": "Organizer verification updated",
         "user": fiber.Map{
-            "user_id":        user.UserID,
-            "username":       user.Username,
-            "name":           user.Name,
-            "email":          user.Email,
-            "role":           user.Role,
-            "organization":   user.Organization,
-            "ktp":            user.KTP,
-            "register_status": user.RegisterStatus,
+            "user_id":          user.UserID,
+            "username":         user.Username,
+            "name":             user.Name,
+            "email":            user.Email,
+            "role":             user.Role,
+            "organization":     user.Organization,
+            "ktp":              user.KTP,
+            "register_status":  user.RegisterStatus,
+            "register_comment": user.RegisterComment,
         },
     })
 }

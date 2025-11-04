@@ -2,10 +2,11 @@ package models
 
 import (
     "time"
+    "github.com/google/uuid"
 )
 
 type User struct {
-    UserID                  uint      `gorm:"primaryKey" json:"user_id"`
+    UserID                  uuid.UUID `gorm:"primaryKey;type:char(36)" json:"user_id"`
     Username                string    `gorm:"uniqueIndex;size:50" json:"username"`
     Name                    string    `gorm:"size:100" json:"name"`
     Email                   string    `gorm:"uniqueIndex;size:100" json:"email"`
@@ -17,6 +18,7 @@ type User struct {
     OrganizationDescription string    `gorm:"type:text" json:"organization_description"`
     KTP                     string    `gorm:"size:255" json:"ktp"`
     RegisterStatus          string    `gorm:"size:20;default:pending" json:"register_status"` // pending, approved, rejected
+    RegisterComment         string    `gorm:"type:text" json:"register_comment"` // Comment dari admin saat verifikasi
     AccessToken             string    `gorm:"size:500" json:"-"`
     RefreshToken            string    `gorm:"size:500" json:"-"`
     CreatedAt               time.Time `json:"created_at"`
@@ -33,7 +35,7 @@ type User struct {
 type Event struct {
     EventID           uint      `gorm:"primaryKey" json:"event_id"`
     Name              string    `gorm:"size:100" json:"name"`
-    OwnerID           uint      `json:"owner_id"`
+    OwnerID           uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     Status            string    `gorm:"size:20;default:pending" json:"status"` // pending, approved, rejected
     ApprovalComment   string    `gorm:"type:text" json:"approval_comment"`
     DateStart         time.Time `json:"date_start"`
@@ -76,7 +78,7 @@ type Ticket struct {
     TicketID         uint      `gorm:"primaryKey" json:"ticket_id"`
     EventID          uint      `json:"event_id"`
     TicketCategoryID uint      `json:"ticket_category_id"`
-    OwnerID          uint      `json:"owner_id"`
+    OwnerID          uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     Status           string    `gorm:"size:20;default:active" json:"status"` // active, used, cancelled
     Code             string    `gorm:"size:100;uniqueIndex" json:"code"`
     CreatedAt        time.Time `json:"created_at"`
@@ -91,7 +93,7 @@ type Ticket struct {
 type Cart struct {
     CartID           uint      `gorm:"primaryKey" json:"cart_id"`
     TicketCategoryID uint      `json:"ticket_category_id"`
-    OwnerID          uint      `json:"owner_id"`
+    OwnerID          uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     Quantity         uint      `gorm:"default:1" json:"quantity"`
     PriceTotal       float64   `gorm:"type:decimal(10,2)" json:"price_total"`
     CreatedAt        time.Time `json:"created_at"`
@@ -104,7 +106,7 @@ type Cart struct {
 
 type TransactionHistory struct {
     TransactionID    uint      `gorm:"primaryKey" json:"transaction_id"`
-    OwnerID          uint      `json:"owner_id"`
+    OwnerID          uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     TransactionTime  time.Time `json:"transaction_time"`
     PriceTotal       float64   `gorm:"type:decimal(10,2)" json:"price_total"`
     CreatedAt        time.Time `json:"created_at"`
@@ -118,7 +120,7 @@ type TransactionDetail struct {
     TransactionDetailID uint    `gorm:"primaryKey" json:"transaction_detail_id"`
     TicketCategoryID    uint    `json:"ticket_category_id"`
     TransactionID       uint    `json:"transaction_id"`
-    OwnerID             uint    `json:"owner_id"`
+    OwnerID             uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     Quantity            uint    `json:"quantity"`
     Subtotal            float64 `gorm:"type:decimal(10,2)" json:"subtotal"`
     
@@ -131,7 +133,7 @@ type TransactionDetail struct {
 type Report struct {
     ReportID        uint    `gorm:"primaryKey" json:"report_id"`
     EventID         uint    `json:"event_id"`
-    OwnerID         uint    `json:"owner_id"`
+    OwnerID         uuid.UUID `gorm:"type:char(36)" json:"owner_id"`
     TotalAttendant  uint    `json:"total_attendant"`
     TotalSales      float64 `gorm:"type:decimal(10,2)" json:"total_sales"`
     
