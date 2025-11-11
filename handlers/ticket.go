@@ -12,7 +12,7 @@ func CreateTicketCategory(c *fiber.Ctx) error {
     user := c.Locals("user").(models.User)
     
     var ticketData struct {
-        EventID         string  `json:"event_id"` // Changed to string for UUID
+        EventID         string  `json:"event_id"` 
         Price           float64 `json:"price"`
         Quota           uint    `json:"quota"`
         Description     string  `json:"description"`

@@ -94,9 +94,20 @@ func CreateEvent(c *fiber.Ctx) error {
     return c.Status(fiber.StatusCreated).JSON(event)
 }
 
-func GetEvents(c *fiber.Ctx) error {
+func GetApprovedEvents(c *fiber.Ctx) error {
     var events []models.Event
     if err := config.DB.Preload("Owner").Where("status = ?", "approved").Find(&events).Error; err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to fetch events",
+        })
+    }
+    
+    return c.JSON(events)
+}
+
+func GetEvents(c *fiber.Ctx) error {
+    var events []models.Event
+    if err := config.DB.Preload("Owner").Find(&events).Error; err != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
             "error": "Failed to fetch events",
         })
