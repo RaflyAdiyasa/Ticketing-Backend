@@ -103,11 +103,12 @@ type Cart struct {
 }
 
 type TransactionHistory struct {
-	TransactionID   string    `gorm:"primaryKey;type:char(60)" json:"transaction_id"`
-	OwnerID         string    `gorm:"type:char(60);not null" json:"owner_id"`
-	TransactionTime time.Time `json:"transaction_time"`
-	PriceTotal      float64   `gorm:"type:decimal(10,2)" json:"price_total"`
-	CreatedAt       time.Time `json:"created_at"`
+	TransactionID     string    `gorm:"primaryKey;type:char(60)" json:"transaction_id"`
+	OwnerID           string    `gorm:"type:char(60);not null" json:"owner_id"`
+	TransactionTime   time.Time `json:"transaction_time"`
+	PriceTotal        float64   `gorm:"type:decimal(10,2)" json:"price_total"`
+	CreatedAt         time.Time `json:"created_at"`
+	TransactionStatus string    `gorm:"size:20;default:pending" json:"transaction_status"`
 
 	// Relationships
 	Owner              User                `gorm:"foreignKey:OwnerID" json:"owner"`
