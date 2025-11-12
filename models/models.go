@@ -123,6 +123,5 @@ type TransactionDetail struct {
 	Subtotal            float64 `gorm:"type:decimal(10,2)" json:"subtotal"`
 
 	// Relationships
-	TransactionHistory TransactionHistory `gorm:"foreignKey:TransactionID" json:"transaction_history"`
 	Owner              User               `gorm:"foreignKey:OwnerID" json:"owner"`
 }

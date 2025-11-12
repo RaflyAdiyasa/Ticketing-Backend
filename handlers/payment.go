@@ -3,7 +3,7 @@ package handlers
 import (
 	"os"
 	"time"
-
+	"log"
 	"gorm.io/gorm"
 
 	"github.com/Tsaniii18/Ticketing-Backend/config"
@@ -15,148 +15,196 @@ import (
 )
 
 func PaymentMidtrans(c *fiber.Ctx) error {
-	user := c.Locals("user").(models.User)
+    user := c.Locals("user").(models.User)
 
-	// Get user's cart items
-	var cart []models.Cart
-	if err := config.DB.Preload("TicketCategory").Where("owner_id = ?", user.UserID).Find(&cart).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to fetch cart",
-		})
-	}
+    // Get user's cart items
+    type CartWithDetails struct {
+        models.Cart
+        TicketCategoryName string  `json:"ticket_category_name"`
+        EventID            string  `json:"event_id"`
+        PricePerItem       float64 `json:"price_per_item"`
+    }
 
-	if len(cart) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Cart is empty",
-		})
-	}
+    var cartItems []CartWithDetails
+    
+    if err := config.DB.
+        Table("carts").
+        Select("carts.*, tc.name as ticket_category_name, tc.event_id as event_id, tc.price as price_per_item").
+        Joins("LEFT JOIN ticket_categories tc ON carts.ticket_category_id = tc.ticket_category_id").
+        Where("carts.owner_id = ?", user.UserID).
+        Find(&cartItems).Error; err != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to fetch cart: " + err.Error(),
+        })
+    }
 
-	// Calculate total
-	var total float64
-	for _, item := range cart {
-		total += item.PriceTotal
-	}
+    if len(cartItems) == 0 {
+        return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+            "error": "Cart is empty",
+        })
+    }
 
-	// Create transaction
-	transaction := models.TransactionHistory{
-		TransactionID: utils.GenerateTransactionID(),
-		OwnerID:       user.UserID,
-		// TransactionTime:   time.Now(),
-		PriceTotal:        total,
-		CreatedAt:         time.Now(),
-		TransactionStatus: "pending",
-	}
+    // Calculate total dan validasi quota
+    var total float64
+    var transactionDetails []models.TransactionDetail
+    
+    for _, item := range cartItems {
+        // Validasi quota tersedia
+        var ticketCategory models.TicketCategory
+        if err := config.DB.First(&ticketCategory, "ticket_category_id = ?", item.TicketCategoryID).Error; err != nil {
+            return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+                "error": "Ticket category not found: " + item.TicketCategoryID,
+            })
+        }
+        
+        // Cek ketersediaan quota
+        if ticketCategory.Sold + item.Quantity > ticketCategory.Quota {
+            return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+                "error": "Not enough quota for ticket category: " + ticketCategory.Name,
+            })
+        }
+        
+        total += item.PriceTotal
 
-	if err := config.DB.Create(&transaction).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create transaction",
-		})
-	}
+        // Prepare transaction detail
+        transactionDetail := models.TransactionDetail{
+            TransactionDetailID: utils.GenerateTransactionDetailID(),
+            TicketCategoryID:    item.TicketCategoryID,
+            OwnerID:             user.UserID,
+            Quantity:            item.Quantity,
+            Subtotal:            item.PriceTotal,
+        }
+        transactionDetails = append(transactionDetails, transactionDetail)
+    }
 
-	// Create transaction details and tickets
-	for _, cartItem := range cart {
-		// Create transaction detail
-		transactionDetail := models.TransactionDetail{
-			TransactionDetailID: utils.GenerateTransactionDetailID(),
-			TicketCategoryID:    cartItem.TicketCategoryID,
-			TransactionID:       transaction.TransactionID,
-			OwnerID:             user.UserID,
-			Quantity:            cartItem.Quantity,
-			Subtotal:            cartItem.PriceTotal,
-		}
+    // Mulai database transaction
+    tx := config.DB.Begin()
+    if tx.Error != nil {
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to start transaction",
+        })
+    }
 
-		if err := config.DB.Create(&transactionDetail).Error; err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Failed to create transaction detail",
-			})
-		}
+    // Create transaction
+    transaction := models.TransactionHistory{
+        TransactionID:     utils.GenerateTransactionID(),
+        OwnerID:           user.UserID,
+        TransactionTime:   time.Now(),
+        PriceTotal:        total,
+        CreatedAt:         time.Now(),
+        TransactionStatus: "pending",
+    }
 
-		var ticketCategory models.TicketCategory
-		if err := config.DB.First(&ticketCategory, "ticket_category_id = ?", cartItem.TicketCategoryID).Error; err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Ticket category not found",
-			})
-		}
+    if err := tx.Create(&transaction).Error; err != nil {
+        tx.Rollback()
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to create transaction: " + err.Error(),
+        })
+    }
 
-		// Create tickets
-		for i := 0; i < int(cartItem.Quantity); i++ {
-			ticket := models.Ticket{
-				TicketID:         utils.GenerateTicketID(),
-				EventID:          ticketCategory.EventID,
-				TicketCategoryID: cartItem.TicketCategoryID,
-				OwnerID:          user.UserID,
-				Status:           "pending", // Set status to pending until payment is confirmed
-				// Code:             utils.GenerateTicketCode(),
-				CreatedAt: time.Now(),
-				UpdatedAt: time.Now(),
-			}
+    // Create transaction details dan pending tickets
+    for _, detail := range transactionDetails {
+        // Set transaction ID untuk detail
+        detail.TransactionID = transaction.TransactionID
+        
+        if err := tx.Create(&detail).Error; err != nil {
+            tx.Rollback()
+            return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+                "error": "Failed to create transaction detail: " + err.Error(),
+            })
+        }
 
-			if err := config.DB.Create(&ticket).Error; err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-					"error": "Failed to create ticket",
-				})
-			}
-		}
+        // Get event ID from ticket category untuk membuat tickets
+        var ticketCategory models.TicketCategory
+        if err := tx.First(&ticketCategory, "ticket_category_id = ?", detail.TicketCategoryID).Error; err != nil {
+            tx.Rollback()
+            return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+                "error": "Failed to get ticket category: " + err.Error(),
+            })
+        }
 
-	}
+        // Create pending tickets - FIX: Generate unique code untuk setiap ticket
+        for i := 0; i < int(detail.Quantity); i++ {
+            ticket := models.Ticket{
+                TicketID:         utils.GenerateTicketID(),
+                EventID:          ticketCategory.EventID,
+                TicketCategoryID: detail.TicketCategoryID,
+                OwnerID:          user.UserID,
+                Status:           "pending",
+                Code:             utils.GenerateTicketCode(), // GENERATE UNIQUE CODE
+                CreatedAt:        time.Now(),
+                UpdatedAt:        time.Now(),
+            }
 
-	// Create Snap client
-	var s snap.Client
-	s.New(os.Getenv("MIDTRANS_SERVER_KEY"), midtrans.Sandbox)
+            if err := tx.Create(&ticket).Error; err != nil {
+                tx.Rollback()
+                return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+                    "error": "Failed to create ticket: " + err.Error(),
+                })
+            }
+        }
+    }
 
-	var items []midtrans.ItemDetails
-	for _, cartItem := range cart {
+    // Clear cart
+    if err := tx.Where("owner_id = ?", user.UserID).Delete(&models.Cart{}).Error; err != nil {
+        tx.Rollback()
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to clear cart: " + err.Error(),
+        })
+    }
 
-		var ticketCategory models.TicketCategory
-		if err := config.DB.First(&ticketCategory, "ticket_category_id = ?", cartItem.TicketCategoryID).Error; err != nil {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Ticket category not found",
-			})
-		}
+    // Commit transaction
+    if err := tx.Commit().Error; err != nil {
+        tx.Rollback()
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to commit transaction: " + err.Error(),
+        })
+    }
 
-		item := midtrans.ItemDetails{
-			ID:       cartItem.TicketCategoryID,
-			Name:     ticketCategory.Name,
-			Price:    int64(cartItem.PriceTotal),
-			Qty:      int32(cartItem.Quantity),
-			Category: "Event Ticket",
-		}
-		items = append(items, item)
-	}
+    // Create Snap client untuk Midtrans
+    var s snap.Client
+    s.New(os.Getenv("MIDTRANS_SERVER_KEY"), midtrans.Sandbox)
 
-	req := &snap.Request{
-		TransactionDetails: midtrans.TransactionDetails{
-			OrderID:  transaction.TransactionID,
-			GrossAmt: int64(total),
-		},
-		CustomerDetail: &midtrans.CustomerDetails{
-			FName: user.Name,
-			Email: user.Email,
-		},
-		Items: &items,
-	}
+    // Prepare items untuk Midtrans
+    var items []midtrans.ItemDetails
+    for _, item := range cartItems {
+        items = append(items, midtrans.ItemDetails{
+            ID:    item.TicketCategoryID,
+            Name:  item.TicketCategoryName,
+            Price: int64(item.PricePerItem),
+            Qty:   int32(item.Quantity),
+        })
+    }
 
-	resp, err := s.CreateTransaction(req)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to create transaction with Midtrans",
-		})
-	}
+    req := &snap.Request{
+        TransactionDetails: midtrans.TransactionDetails{
+            OrderID:  transaction.TransactionID,
+            GrossAmt: int64(total),
+        },
+        CustomerDetail: &midtrans.CustomerDetails{
+            FName: user.Name,
+            Email: user.Email,
+        },
+        Items: &items,
+    }
 
-	// Clear cart
-	if err := config.DB.Where("owner_id = ?", user.UserID).Delete(&models.Cart{}).Error; err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to clear cart",
-		})
-	}
+    // Create Midtrans transaction
+    snapResp, err := s.CreateTransaction(req)
+    if err != nil {
+        log.Printf("Midtrans error: %v", err)
+        return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+            "error": "Failed to create Midtrans payment: " + err.Error(),
+            "transaction_id": transaction.TransactionID,
+        })
+    }
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Payment Midtrans Endpoint",
-		"total":   total,
-		"url":     resp.RedirectURL,
-		"token":   resp.Token,
-	})
-
+    return c.Status(fiber.StatusOK).JSON(fiber.Map{
+        "message": "Payment initiated successfully",
+        "transaction_id": transaction.TransactionID,
+        "total":   total,
+        "payment_url": snapResp.RedirectURL,
+        "token":   snapResp.Token,
+    })
 }
 
 func PaymentNotificationHandler(c *fiber.Ctx) error {
