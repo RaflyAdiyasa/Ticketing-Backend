@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-
+	"strings"
 	"github.com/google/uuid"
 )
 
@@ -27,7 +27,10 @@ func GenerateTicketID() string {
 }
 
 func GenerateTicketCode() string {
-	return GeneratePrefixedUUID("tix")
+	uuidStr := uuid.New().String()
+	cleanUUID := strings.ReplaceAll(uuidStr, "-", "")
+	code := fmt.Sprintf("tix%s", cleanUUID[:10])
+	return code
 }
 
 func GenerateCartID() string {

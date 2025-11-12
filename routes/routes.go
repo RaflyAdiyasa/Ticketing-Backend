@@ -32,7 +32,7 @@ func SetupRoutes(app *fiber.App) {
 	event.Post("/", handlers.CreateEvent)
 	event.Put("/:id", handlers.UpdateEvent)
 	event.Patch("/:id/verify", middleware.AdminMiddleware, handlers.VerifyEvent)
-	event.Delete("/:id", handlers.DeleteEvent)	
+	event.Delete("/:id", handlers.DeleteEvent)
 
 	// Ticket routes
 	ticket := app.Group("/api/tickets", middleware.AuthMiddleware)
