@@ -191,7 +191,6 @@ func CreateEvent(c *fiber.Ctx) error {
         })
     }
 
-    // **PERBAIKAN: Preload owner data dengan query yang benar**
     var eventWithOwner models.Event
     if err := config.DB.Preload("Owner").Preload("TicketCategories").
         Where("event_id = ?", event.EventID).
@@ -204,6 +203,7 @@ func CreateEvent(c *fiber.Ctx) error {
     return c.Status(fiber.StatusCreated).JSON(fiber.Map{
         "message": "Event created successfully",
         "event": eventWithOwner,
+        "created_ticket_categories": createdTicketCategories,
     })
 }
 
