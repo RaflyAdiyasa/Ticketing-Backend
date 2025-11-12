@@ -1,6 +1,7 @@
 package handlers
 
 import (
+    "log"
     "context"
     "time"
     "fmt"
@@ -180,6 +181,7 @@ func CreateEvent(c *fiber.Ctx) error {
             }
             
             createdTicketCategories = append(createdTicketCategories, ticketCategory)
+            log.Println("append result: ", createdTicketCategories)
         }
     }
 
@@ -203,7 +205,6 @@ func CreateEvent(c *fiber.Ctx) error {
     return c.Status(fiber.StatusCreated).JSON(fiber.Map{
         "message": "Event created successfully",
         "event": eventWithOwner,
-        "created_ticket_categories": createdTicketCategories,
     })
 }
 
@@ -274,10 +275,12 @@ func VerifyEvent(c *fiber.Ctx) error {
         })
     }
 
-    // Reload data dengan owner
-    if err := config.DB.Preload("Owner").First(&event, event.EventID).Error; err != nil {
+    var eventWithOwner models.Event
+    if err := config.DB.Preload("Owner").Preload("TicketCategories").
+        Where("event_id = ?", event.EventID).
+        First(&eventWithOwner).Error; err != nil {
         return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-            "error": "Failed to load event data",
+            "error": "Failed to load event data: " + err.Error(),
         })
     }
     
