@@ -31,23 +31,24 @@ type User struct {
 }
 
 type Event struct {
-	EventID         string    `gorm:"primaryKey;type:char(60)" json:"event_id"`
-	Name            string    `gorm:"size:100" json:"name"`
-	OwnerID         string    `gorm:"type:char(60);not null" json:"owner_id"`
-	Status          string    `gorm:"size:20;default:pending" json:"status"`
-	ApprovalComment string    `gorm:"type:text" json:"approval_comment"`
-	DateStart       time.Time `json:"date_start"`
-	DateEnd         time.Time `json:"date_end"`
-	Location        string    `gorm:"size:255" json:"location"`
-	City            string    `gorm:"size:100" json:"city"`
-	Description     string    `gorm:"type:text" json:"description"`
-	Image           string    `gorm:"size:255" json:"image"`
-	Flyer           string    `gorm:"size:255" json:"flyer"`
-	Category        string    `gorm:"size:50" json:"category"`
-	TotalAttendant  uint      `gorm:"default:0" json:"total_attendant"`
-	TotalSales      float64   `gorm:"type:decimal(10,2);default:0" json:"total_sales"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	EventID          string    `gorm:"primaryKey;type:char(60)" json:"event_id"`
+	Name             string    `gorm:"size:100" json:"name"`
+	OwnerID          string    `gorm:"type:char(60);not null" json:"owner_id"`
+	Status           string    `gorm:"size:20;default:pending" json:"status"`
+	ApprovalComment  string    `gorm:"type:text" json:"approval_comment"`
+	DateStart        time.Time `json:"date_start"`
+	DateEnd          time.Time `json:"date_end"`
+	Location         string    `gorm:"size:255" json:"location"`
+	City             string    `gorm:"size:100" json:"city"`
+	Description      string    `gorm:"type:text" json:"description"`
+	Image            string    `gorm:"size:255" json:"image"`
+	Flyer            string    `gorm:"size:255" json:"flyer"`
+	Category         string    `gorm:"size:50" json:"category"`
+	TotalAttendant   uint      `gorm:"default:0" json:"total_attendant"`
+	TotalSales       float64   `gorm:"type:decimal(10,2);default:0" json:"total_sales"`
+	TotalTicketsSold uint      `gorm:"default:0" json:"total_tickets_sold"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 
 	// Relationships
 	Owner            User             `gorm:"foreignKey:OwnerID;references:UserID" json:"owner"`
@@ -85,7 +86,7 @@ type Ticket struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 
 	// Relationships
-	Owner          User           `gorm:"foreignKey:OwnerID" json:"owner"`
+	Owner User `gorm:"foreignKey:OwnerID" json:"owner"`
 }
 
 type Cart struct {
@@ -98,7 +99,7 @@ type Cart struct {
 	UpdatedAt        time.Time `json:"updated_at"`
 
 	// Relationships
-	Owner          User           `gorm:"foreignKey:OwnerID" json:"owner"`
+	Owner User `gorm:"foreignKey:OwnerID" json:"owner"`
 }
 
 type TransactionHistory struct {
@@ -123,5 +124,5 @@ type TransactionDetail struct {
 	Subtotal            float64 `gorm:"type:decimal(10,2)" json:"subtotal"`
 
 	// Relationships
-	Owner              User               `gorm:"foreignKey:OwnerID" json:"owner"`
+	Owner User `gorm:"foreignKey:OwnerID" json:"owner"`
 }

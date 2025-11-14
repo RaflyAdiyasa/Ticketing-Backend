@@ -27,6 +27,7 @@ func SetupRoutes(app *fiber.App) {
 	// Event routes
 	app.Get("/api/events", handlers.GetApprovedEvents)
 	app.Get("/api/event/:id", handlers.GetEvent)
+	app.Get("/api/events/popular", handlers.GetEventsPopular)
 	event := app.Group("/api/events", middleware.AuthMiddleware)
 	event.Get("/all", handlers.GetEvents)
 	event.Post("/", middleware.OrganizerApprovalMiddleware, handlers.CreateEvent)
