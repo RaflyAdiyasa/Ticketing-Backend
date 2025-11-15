@@ -67,76 +67,177 @@ func AddToCart(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(cart)
+	// Load event data for this ticket category
+	var event models.Event
+	if err := config.DB.First(&event, "event_id = ?", ticketCategory.EventID).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load event data",
+		})
+	}
+
+	// Build enriched response
+	cartResponse := CartResponse{
+		CartID:     cart.CartID,
+		OwnerID:    cart.OwnerID,
+		Quantity:   cart.Quantity,
+		PriceTotal: cart.PriceTotal,
+		CreatedAt:  cart.CreatedAt,
+		UpdatedAt:  cart.UpdatedAt,
+		TicketCategory: &TicketCategoryResponse{
+			TicketCategoryID: ticketCategory.TicketCategoryID,
+			Name:            ticketCategory.Name,
+			EventID:         ticketCategory.EventID,
+			Price:           ticketCategory.Price,
+			Quota:           ticketCategory.Quota,
+			Sold:           ticketCategory.Sold,
+			Description:     ticketCategory.Description,
+			DateTimeStart:   ticketCategory.DateTimeStart,
+			DateTimeEnd:     ticketCategory.DateTimeEnd,
+			CreatedAt:       ticketCategory.CreatedAt,
+			UpdatedAt:       ticketCategory.UpdatedAt,
+		},
+		Event: &EventResponse{
+			EventID:          event.EventID,
+			Name:            event.Name,
+			OwnerID:         event.OwnerID,
+			Status:          event.Status,
+			DateStart:       event.DateStart,
+			DateEnd:         event.DateEnd,
+			Location:        event.Location,
+			City:           event.City,
+			Description:     event.Description,
+			Image:          event.Image,
+			Flyer:          event.Flyer,
+			Category:       event.Category,
+			TotalTicketsSold: event.TotalTicketsSold,
+			CreatedAt:      event.CreatedAt,
+			UpdatedAt:      event.UpdatedAt,
+		},
+	}
+
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "Item added to cart successfully",
+		"cart":    cartResponse,
+	})
+}
+
+// CartResponse represents the enriched cart response structure
+type CartResponse struct {
+	CartID         string                  `json:"cart_id"`
+	OwnerID        string                  `json:"owner_id"`
+	Quantity       uint                    `json:"quantity"`
+	PriceTotal     float64                 `json:"price_total"`
+	CreatedAt      time.Time               `json:"created_at"`
+	UpdatedAt      time.Time               `json:"updated_at"`
+	TicketCategory *TicketCategoryResponse `json:"ticket_category"`
+	Event          *EventResponse          `json:"event"`
+}
+
+type TicketCategoryResponse struct {
+	TicketCategoryID string    `json:"ticket_category_id"`
+	Name             string    `json:"name"`
+	EventID          string    `json:"event_id"`
+	Price            float64   `json:"price"`
+	Quota            uint      `json:"quota"`
+	Sold             uint      `json:"sold"`
+	Description      string    `json:"description"`
+	DateTimeStart    time.Time `json:"date_time_start"`
+	DateTimeEnd      time.Time `json:"date_time_end"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+type EventResponse struct {
+	EventID          string    `json:"event_id"`
+	Name             string    `json:"name"`
+	OwnerID          string    `json:"owner_id"`
+	Status           string    `json:"status"`
+	DateStart        time.Time `json:"date_start"`
+	DateEnd          time.Time `json:"date_end"`
+	Location         string    `json:"location"`
+	City             string    `json:"city"`
+	Description      string    `json:"description"`
+	Image            string    `json:"image"`
+	Flyer            string    `json:"flyer"`
+	Category         string    `json:"category"`
+	TotalTicketsSold uint      `json:"total_tickets_sold"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 func GetCart(c *fiber.Ctx) error {
 	user := c.Locals("user").(models.User)
 
-	type EnrichedCartItem struct {
-
-		// carts
-		CartID     string    `json:"cart_id"`
-		OwnerID    string    `json:"owner_id"`
-		Quantity   uint      `json:"quantity"`
-		PriceTotal float64   `json:"price_total"`
-		CreatedAt  time.Time `json:"created_at"`
-		UpdatedAt  time.Time `json:"updated_at"`
-
-		// ticket_categories
-		TicketCategoryID string    `json:"ticket_category_id"`
-		TCName           string    `json:"name"`
-		TCEventID        string    `json:"event_id"`
-		TCPrice          float64   `json:"price"`
-		TCQuota          uint      `json:"quota"`
-		TCSold           uint      `json:"sold"`
-		TCDescription    string    `json:"description"`
-		TCDateTimeStart  time.Time `json:"date_time_start"`
-		TCDateTimeEnd    time.Time `json:"date_time_end"`
-
-		// events
-		EventName             string    `json:"event_name"`
-		EventCity             string    `json:"event_city"`
-		EventStart            time.Time `json:"event_start"`
-		EventEnd              time.Time `json:"event_end"`
-		EventTotalTicketsSold uint      `json:"total_tickets_sold"`
-	}
-
-	var enrichedCart []EnrichedCartItem
+	var carts []models.Cart
 	if err := config.DB.
-		Table("carts").
-		Joins("JOIN ticket_categories ON ticket_categories.ticket_category_id = carts.ticket_category_id").
-		Joins("JOIN events ON events.event_id = ticket_categories.event_id").
-		Where("carts.owner_id = ?", user.UserID).
-		Select(`
-        carts.*,
-
-        ticket_categories.ticket_category_id AS ticket_category_id,
-        ticket_categories.name AS tc_name,
-        ticket_categories.event_id AS tc_event_id,
-        ticket_categories.price AS tc_price,
-        ticket_categories.quota AS tc_quota,
-        ticket_categories.sold AS tc_sold,
-        ticket_categories.description AS tc_description,
-        ticket_categories.date_time_start AS tc_date_time_start,
-        ticket_categories.date_time_end AS tc_date_time_end,
-
-        events.event_id AS event_id,
-        events.name AS event_name,
-        events.city AS event_city,
-        events.date_start AS event_start,
-        events.date_end AS event_end,
-        events.total_tickets_sold AS event_total_tickets_sold
-    `).
-		Scan(&enrichedCart).Error; err != nil {
-
+		Where("owner_id = ?", user.UserID).
+		Find(&carts).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch cart: " + err.Error(),
 		})
 	}
 
-	return c.JSON(enrichedCart)
+	// Enrich cart data with ticket category and event information
+	var cartResponses []CartResponse
+	for _, cart := range carts {
+		// Get ticket category for this cart item
+		var ticketCategory models.TicketCategory
+		if err := config.DB.First(&ticketCategory, "ticket_category_id = ?", cart.TicketCategoryID).Error; err != nil {
+			continue // Skip this cart item if ticket category not found
+		}
 
+		// Get event for this ticket category
+		var event models.Event
+		if err := config.DB.First(&event, "event_id = ?", ticketCategory.EventID).Error; err != nil {
+			continue // Skip this cart item if event not found
+		}
+
+		cartResponse := CartResponse{
+			CartID:     cart.CartID,
+			OwnerID:    cart.OwnerID,
+			Quantity:   cart.Quantity,
+			PriceTotal: cart.PriceTotal,
+			CreatedAt:  cart.CreatedAt,
+			UpdatedAt:  cart.UpdatedAt,
+			TicketCategory: &TicketCategoryResponse{
+				TicketCategoryID: ticketCategory.TicketCategoryID,
+				Name:            ticketCategory.Name,
+				EventID:         ticketCategory.EventID,
+				Price:           ticketCategory.Price,
+				Quota:           ticketCategory.Quota,
+				Sold:           ticketCategory.Sold,
+				Description:     ticketCategory.Description,
+				DateTimeStart:   ticketCategory.DateTimeStart,
+				DateTimeEnd:     ticketCategory.DateTimeEnd,
+				CreatedAt:       ticketCategory.CreatedAt,
+				UpdatedAt:       ticketCategory.UpdatedAt,
+			},
+			Event: &EventResponse{
+				EventID:          event.EventID,
+				Name:            event.Name,
+				OwnerID:         event.OwnerID,
+				Status:          event.Status,
+				DateStart:       event.DateStart,
+				DateEnd:         event.DateEnd,
+				Location:        event.Location,
+				City:           event.City,
+				Description:     event.Description,
+				Image:          event.Image,
+				Flyer:          event.Flyer,
+				Category:       event.Category,
+				TotalTicketsSold: event.TotalTicketsSold,
+				CreatedAt:      event.CreatedAt,
+				UpdatedAt:      event.UpdatedAt,
+			},
+		}
+
+		cartResponses = append(cartResponses, cartResponse)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Cart retrieved successfully",
+		"carts":   cartResponses,
+	})
 }
 
 func UpdateCart(c *fiber.Ctx) error {
@@ -202,7 +303,58 @@ func UpdateCart(c *fiber.Ctx) error {
 		})
 	}
 
-	return c.JSON(cart)
+	// Get event data for response
+	var event models.Event
+	if err := config.DB.First(&event, "event_id = ?", ticketCategory.EventID).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load event data",
+		})
+	}
+
+	// Build enriched response
+	cartResponse := CartResponse{
+		CartID:     cart.CartID,
+		OwnerID:    cart.OwnerID,
+		Quantity:   cart.Quantity,
+		PriceTotal: cart.PriceTotal,
+		CreatedAt:  cart.CreatedAt,
+		UpdatedAt:  cart.UpdatedAt,
+		TicketCategory: &TicketCategoryResponse{
+			TicketCategoryID: ticketCategory.TicketCategoryID,
+			Name:            ticketCategory.Name,
+			EventID:         ticketCategory.EventID,
+			Price:           ticketCategory.Price,
+			Quota:           ticketCategory.Quota,
+			Sold:           ticketCategory.Sold,
+			Description:     ticketCategory.Description,
+			DateTimeStart:   ticketCategory.DateTimeStart,
+			DateTimeEnd:     ticketCategory.DateTimeEnd,
+			CreatedAt:       ticketCategory.CreatedAt,
+			UpdatedAt:       ticketCategory.UpdatedAt,
+		},
+		Event: &EventResponse{
+			EventID:          event.EventID,
+			Name:            event.Name,
+			OwnerID:         event.OwnerID,
+			Status:          event.Status,
+			DateStart:       event.DateStart,
+			DateEnd:         event.DateEnd,
+			Location:        event.Location,
+			City:           event.City,
+			Description:     event.Description,
+			Image:          event.Image,
+			Flyer:          event.Flyer,
+			Category:       event.Category,
+			TotalTicketsSold: event.TotalTicketsSold,
+			CreatedAt:      event.CreatedAt,
+			UpdatedAt:      event.UpdatedAt,
+		},
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Cart updated successfully",
+		"cart":    cartResponse,
+	})
 }
 
 func DeleteCart(c *fiber.Ctx) error {
@@ -224,7 +376,17 @@ func DeleteCart(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := config.DB.Where("cart_id = ? AND owner_id = ?", deleteData.CartID, user.UserID).Delete(&models.Cart{}).Error; err != nil {
+	// Check if cart exists and belongs to user
+	var cart models.Cart
+	if err := config.DB.
+		Where("cart_id = ? AND owner_id = ?", deleteData.CartID, user.UserID).
+		First(&cart).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Cart item not found",
+		})
+	}
+
+	if err := config.DB.Delete(&cart).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to delete cart item: " + err.Error(),
 		})
@@ -232,5 +394,6 @@ func DeleteCart(c *fiber.Ctx) error {
 
 	return c.JSON(fiber.Map{
 		"message": "Cart item deleted successfully",
+		"deleted_cart_id": deleteData.CartID,
 	})
 }
