@@ -49,10 +49,10 @@ func SetupRoutes(app *fiber.App) {
 	cart.Delete("/", handlers.DeleteCart)
 
 	// Transaction routes
-	transaction := app.Group("/api", middleware.AuthMiddleware)
-	transaction.Post("/checkout", handlers.Checkout)
-	transaction.Get("/transactions", handlers.GetTransactions)
-	transaction.Get("/transactions/:id", handlers.GetTransaction)
+	// transaction := app.Group("/api", middleware.AuthMiddleware)
+	// transaction.Post("/checkout", handlers.Checkout)
+	// transaction.Get("/transactions", handlers.GetTransactions)
+	// transaction.Get("/transactions/:id", handlers.GetTransaction)
 
 	// Payment routes
 	payment := app.Group("/api/payment", middleware.AuthMiddleware)
