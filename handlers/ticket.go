@@ -51,6 +51,26 @@ func CheckInTicket(c *fiber.Ctx) error {
 	})
 }
 
+type ticketResponse struct {
+	Code           string                  `json:"code"`
+	TicketID       string                  `json:"ticket_id"`
+	TicketCategory *ticketCategoryResponse `json:"ticket_category"`
+	Event          *eventResponse          `json:"event"`
+}
+
+type ticketCategoryResponse struct {
+	DateTimeStart time.Time `json:"date_time_start"`
+	DateTimeEnd   time.Time `json:"date_time_end"`
+	Price         float64   `json:"price"`
+	Description   string    `json:"description"`
+}
+
+type eventResponse struct {
+	Name     string `json:"name"`
+	Location string `json:"location"`
+	City     string `json:"city"`
+}
+
 func GetTicketCode(c *fiber.Ctx) error {
 	TicketID := c.Params("id")
 	var Message string = "Ticket code is valid."
@@ -67,6 +87,43 @@ func GetTicketCode(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to start transaction",
 		})
+	}
+
+	var ticketCategory models.TicketCategory
+	if err := tx.First(&ticketCategory, "ticket_category_id = ?", ticket.TicketCategoryID).Error; err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch ticket category",
+		})
+	}
+
+	var event models.Event
+	if err := tx.First(&event, "event_id = ?", ticket.EventID).Error; err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch event",
+		})
+	}
+
+	ticketCategoryResponse := ticketCategoryResponse{
+		DateTimeStart: ticketCategory.DateTimeStart,
+		DateTimeEnd:   ticketCategory.DateTimeEnd,
+		Price:         ticketCategory.Price,
+		Description:   ticketCategory.Description,
+	}
+
+	eventResponse := eventResponse{
+		Name:     event.Name,
+		Location: event.Location,
+		City:     event.City,
+	}
+
+	// prepare response data
+	ticketResponse := ticketResponse{
+		Code:           ticket.Code,
+		TicketID:       ticket.TicketID,
+		TicketCategory: &ticketCategoryResponse,
+		Event:          &eventResponse,
 	}
 
 	// check if ticket is expired
@@ -98,7 +155,7 @@ func GetTicketCode(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message":     Message,
-		"ticket_code": ticket.Code,
+		"message": Message,
+		"ticket":  ticketResponse,
 	})
 }
