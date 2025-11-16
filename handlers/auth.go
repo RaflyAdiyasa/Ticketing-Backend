@@ -154,6 +154,50 @@ func Register(c *fiber.Ctx) error {
 	})
 }
 
+func DefaultAdminSetup() error {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println(".env file not found, using system environment")
+
+	}
+
+	df_admin_username := os.Getenv("DEFAULT_ADMIN_USERNAME")
+	df_admin_email := os.Getenv("DEFAULT_ADMIN_EMAIL")
+	df_admin_pass := os.Getenv("DEFAULT_ADMIN_PASS")
+	df_admin_name := os.Getenv("DEFAULT_ADMIN_NAME")
+
+	// Cek apakah admin sudah ada
+	var adminCheck models.User
+	if err := config.DB.Where("username = ? && email = ?", df_admin_username, df_admin_email).First(&adminCheck).Error; err == nil {
+		log.Println("Default admin user already exists")
+		return nil
+	}
+
+	var admin models.User
+
+	hashedPassword, err := utils.HashPassword(df_admin_pass)
+	if err != nil {
+		log.Fatal("Failed to hash default admin password:", err)
+	}
+
+	admin = models.User{
+		UserID:    utils.GenerateUserID("admin"),
+		Username:  df_admin_username,
+		Name:      df_admin_name,
+		Email:     df_admin_email,
+		Password:  hashedPassword,
+		Role:      "admin",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if err := config.DB.Create(&admin).Error; err != nil {
+		log.Fatal("Failed to create default admin user:", err)
+	}
+	log.Println("Default admin user created successfully, username:", df_admin_username)
+	return nil
+}
+
 // Login function - MODIFIKASI: Allow organizer dengan status pending untuk login
 func Login(c *fiber.Ctx) error {
 	var req LoginRequest
