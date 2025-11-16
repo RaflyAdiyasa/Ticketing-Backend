@@ -393,3 +393,137 @@ func GetEventsPopular(c *fiber.Ctx) error {
 		"events": events,
 	})
 }
+
+type EventReportResponse struct {
+	Event            models.Event          `json:"event"`
+	PurchaseData     []TicketCategoryStats `json:"purchase_data"`
+	CheckinData      []TicketCategoryStats `json:"checkin_data"`
+	TotalIncome      float64               `json:"total_income"`
+	TotalTicketsSold int                   `json:"total_tickets_sold"`
+	TotalCheckins    int                   `json:"total_checkins"`
+}
+
+type TicketCategoryStats struct {
+	Name  string `json:"name"`
+	Value int    `json:"value"`
+}
+
+func GetEventReport(c *fiber.Ctx) error {
+	eventID := c.Params("id")
+	user := c.Locals("user").(models.User)
+
+	var event models.Event
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").
+		Where("event_id = ?", eventID).
+		First(&event).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Event not found",
+		})
+	}
+
+	// Check ownership
+	if event.OwnerID != user.UserID && user.Role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Not authorized to view this report",
+		})
+	}
+
+	// Get ticket sales data
+	var purchaseData []TicketCategoryStats
+	var checkinData []TicketCategoryStats
+	var totalIncome float64
+	var totalTicketsSold int
+	var totalCheckins int
+
+	// Calculate purchase data and income
+	for _, ticketCategory := range event.TicketCategories {
+		var soldCount int64
+		var checkedInCount int64
+
+		// Count sold tickets for this category (status = paid)
+		config.DB.Model(&models.Ticket{}).
+			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "paid").
+			Count(&soldCount)
+
+		// Count checked-in tickets for this category
+		config.DB.Model(&models.Ticket{}).
+			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "used").
+			Count(&checkedInCount)
+
+		purchaseData = append(purchaseData, TicketCategoryStats{
+			Name:  ticketCategory.Name,
+			Value: int(soldCount),
+		})
+
+		checkinData = append(checkinData, TicketCategoryStats{
+			Name:  ticketCategory.Name,
+			Value: int(checkedInCount),
+		})
+
+		totalIncome += float64(soldCount) * ticketCategory.Price
+		totalTicketsSold += int(soldCount)
+		totalCheckins += int(checkedInCount)
+	}
+
+	report := EventReportResponse{
+		Event:            event,
+		PurchaseData:     purchaseData,
+		CheckinData:      checkinData,
+		TotalIncome:      totalIncome,
+		TotalTicketsSold: totalTicketsSold,
+		TotalCheckins:    totalCheckins,
+	}
+
+	return c.JSON(report)
+}
+
+func DownloadEventReport(c *fiber.Ctx) error {
+	eventID := c.Params("id")
+	user := c.Locals("user").(models.User)
+
+	var event models.Event
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").
+		Where("event_id = ?", eventID).
+		First(&event).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Event not found",
+		})
+	}
+
+	// Check ownership
+	if event.OwnerID != user.UserID && user.Role != "admin" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Not authorized to download this report",
+		})
+	}
+
+	// Generate CSV report
+	csvData := "Kategori Tiket,Tiket Terjual,Tiket Check-in,Pendapatan\n"
+	var totalIncome float64
+
+	for _, ticketCategory := range event.TicketCategories {
+		var soldCount int64
+		var checkedInCount int64
+
+		config.DB.Model(&models.Ticket{}).
+			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "paid").
+			Count(&soldCount)
+
+		config.DB.Model(&models.Ticket{}).
+			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "used").
+			Count(&checkedInCount)
+
+		categoryIncome := float64(soldCount) * ticketCategory.Price
+		totalIncome += categoryIncome
+
+		csvData += fmt.Sprintf("%s,%d,%d,%.2f\n",
+			ticketCategory.Name, soldCount, checkedInCount, categoryIncome)
+	}
+
+	csvData += fmt.Sprintf("Total,,,%.2f\n", totalIncome)
+
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=report-%s.csv", eventID))
+
+	return c.SendString(csvData)
+}
