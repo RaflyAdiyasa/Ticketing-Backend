@@ -30,6 +30,7 @@ func SetupRoutes(app *fiber.App) {
 	app.Get("/api/events/popular", handlers.GetEventsPopular)
 	event := app.Group("/api/events", middleware.AuthMiddleware)
 	event.Get("/all", handlers.GetEvents)
+	event.Get("/my-events", handlers.GetMyEvents) 
 	event.Post("/", middleware.OrganizerApprovalMiddleware, handlers.CreateEvent)
 	event.Put("/:id", handlers.UpdateEvent)
 	event.Patch("/:id/verify", middleware.AdminMiddleware, handlers.VerifyEvent)
@@ -47,12 +48,6 @@ func SetupRoutes(app *fiber.App) {
 	cart.Get("/", handlers.GetCart)
 	cart.Patch("/", handlers.UpdateCart)
 	cart.Delete("/", handlers.DeleteCart)
-
-	// Transaction routes
-	// transaction := app.Group("/api", middleware.AuthMiddleware)
-	// transaction.Post("/checkout", handlers.Checkout)
-	// transaction.Get("/transactions", handlers.GetTransactions)
-	// transaction.Get("/transactions/:id", handlers.GetTransaction)
 
 	// Payment routes
 	payment := app.Group("/api/payment", middleware.AuthMiddleware)

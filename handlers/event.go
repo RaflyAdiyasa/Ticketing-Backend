@@ -220,6 +220,25 @@ func GetApprovedEvents(c *fiber.Ctx) error {
 	return c.JSON(events)
 }
 
+func GetMyEvents(c *fiber.Ctx) error {
+	user := c.Locals("user").(models.User)
+
+	var events []models.Event
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").
+		Where("owner_id = ?", user.UserID).
+		Order("created_at DESC").
+		Find(&events).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to fetch your events",
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Events retrieved successfully",
+		"events":  events,
+	})
+}
+
 func GetEvents(c *fiber.Ctx) error {
 	var events []models.Event
 	if err := config.DB.Preload("Owner").Preload("TicketCategories").Find(&events).Error; err != nil {
