@@ -43,6 +43,91 @@ func AddToCart(c *fiber.Ctx) error {
 		})
 	}
 
+	// Cek apakah item dengan ticket category yang sama sudah ada di cart user
+	var existingCart models.Cart
+	err := config.DB.
+		Where("owner_id = ? AND ticket_category_id = ?", user.UserID, cartData.TicketCategoryID).
+		First(&existingCart).Error
+
+	if err == nil {
+		// Item sudah ada di cart, update quantity dan price total
+		newQuantity := existingCart.Quantity + cartData.Quantity
+
+		// Cek ketersediaan kuota untuk quantity baru
+		if ticketCategory.Sold+newQuantity > ticketCategory.Quota {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Not enough quota available",
+			})
+		}
+
+		newPriceTotal := float64(newQuantity) * ticketCategory.Price
+
+		// Update cart yang sudah ada
+		existingCart.Quantity = newQuantity
+		existingCart.PriceTotal = newPriceTotal
+		existingCart.UpdatedAt = time.Now()
+
+		if err := config.DB.Save(&existingCart).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to update cart",
+			})
+		}
+
+		// Load event data untuk response
+		var event models.Event
+		if err := config.DB.First(&event, "event_id = ?", ticketCategory.EventID).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to load event data",
+			})
+		}
+
+		// Build enriched response
+		cartResponse := CartResponse{
+			CartID:     existingCart.CartID,
+			OwnerID:    existingCart.OwnerID,
+			Quantity:   existingCart.Quantity,
+			PriceTotal: existingCart.PriceTotal,
+			CreatedAt:  existingCart.CreatedAt,
+			UpdatedAt:  existingCart.UpdatedAt,
+			TicketCategory: &TicketCategoryResponse{
+				TicketCategoryID: ticketCategory.TicketCategoryID,
+				Name:            ticketCategory.Name,
+				EventID:         ticketCategory.EventID,
+				Price:           ticketCategory.Price,
+				Quota:           ticketCategory.Quota,
+				Sold:           ticketCategory.Sold,
+				Description:     ticketCategory.Description,
+				DateTimeStart:   ticketCategory.DateTimeStart,
+				DateTimeEnd:     ticketCategory.DateTimeEnd,
+				CreatedAt:       ticketCategory.CreatedAt,
+				UpdatedAt:       ticketCategory.UpdatedAt,
+			},
+			Event: &EventResponse{
+				EventID:          event.EventID,
+				Name:            event.Name,
+				OwnerID:         event.OwnerID,
+				Status:          event.Status,
+				DateStart:       event.DateStart,
+				DateEnd:         event.DateEnd,
+				Location:        event.Location,
+				City:           event.City,
+				Description:     event.Description,
+				Image:          event.Image,
+				Flyer:          event.Flyer,
+				Category:       event.Category,
+				TotalTicketsSold: event.TotalTicketsSold,
+				CreatedAt:      event.CreatedAt,
+				UpdatedAt:      event.UpdatedAt,
+			},
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message": "Cart item updated successfully",
+			"cart":    cartResponse,
+		})
+	}
+
+	// Item belum ada di cart, buat cart baru
 	if ticketCategory.Sold+cartData.Quantity > ticketCategory.Quota {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Not enough quota available",
