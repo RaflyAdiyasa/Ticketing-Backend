@@ -15,7 +15,7 @@ func GetTickets(c *fiber.Ctx) error {
 	user := c.Locals("user").(models.User)
 
 	var tickets []models.Ticket
-	if err := config.DB.Preload("Event").Preload("TicketCategory").Where("owner_id = ?", user.UserID).Find(&tickets).Error; err != nil {
+	if err := config.DB.Where("owner_id = ?", user.UserID).Find(&tickets).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch tickets",
 		})
