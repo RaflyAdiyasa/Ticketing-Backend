@@ -315,7 +315,7 @@ func UpdateEvent(c *fiber.Ctx) error {
 	eventID := c.Params("id")
 
 	var event models.Event
-	if err := config.DB.First(&event, eventID).Error; err != nil {
+	if err := config.DB.Preload("TicketCategories").Where("event_id = ?", eventID).First(&event).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"error": "Event not found",
 		})
@@ -328,22 +328,207 @@ func UpdateEvent(c *fiber.Ctx) error {
 		})
 	}
 
-	var updateData map[string]interface{}
-	if err := c.BodyParser(&updateData); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request",
+	// Check if event can be edited (only pending or rejected)
+	if event.Status != "pending" && event.Status != "rejected" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Event can only be edited when status is pending or rejected",
 		})
 	}
 
-	if err := config.DB.Model(&event).Updates(updateData).Error; err != nil {
+	// Parse form data
+	name := c.FormValue("name")
+	dateStartStr := c.FormValue("date_start")
+	dateEndStr := c.FormValue("date_end")
+	location := c.FormValue("location")
+	city := c.FormValue("city")
+	description := c.FormValue("description")
+	category := c.FormValue("category")
+	ticketCategoriesJSON := c.FormValue("ticket_categories")
+
+	// Mulai transaction
+	tx := config.DB.Begin()
+	if tx.Error != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to update event",
+			"error": "Failed to start transaction",
+		})
+	}
+
+	// Update basic event info
+	updateData := map[string]interface{}{
+		"updated_at": time.Now(),
+	}
+
+	if name != "" {
+		updateData["name"] = name
+		event.Name = name
+	}
+	if location != "" {
+		updateData["location"] = location
+		event.Location = location
+	}
+	if city != "" {
+		updateData["city"] = city
+		event.City = city
+	}
+	if description != "" {
+		updateData["description"] = description
+		event.Description = description
+	}
+	if category != "" {
+		updateData["category"] = category
+		event.Category = category
+	}
+
+	// Parse dates if provided
+	if dateStartStr != "" {
+		dateStart, err := time.Parse(time.RFC3339, dateStartStr)
+		if err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid date_start format",
+			})
+		}
+		updateData["date_start"] = dateStart
+		event.DateStart = dateStart
+	}
+
+	if dateEndStr != "" {
+		dateEnd, err := time.Parse(time.RFC3339, dateEndStr)
+		if err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid date_end format",
+			})
+		}
+		updateData["date_end"] = dateEnd
+		event.DateEnd = dateEnd
+	}
+
+	// Handle image upload
+	imageFile, err := c.FormFile("image")
+	if err == nil {
+		file, err := imageFile.Open()
+		if err == nil {
+			defer file.Close()
+			folder := fmt.Sprintf("ticketing-app/events/%s/images", user.UserID)
+			imageURL, err := config.UploadImage(context.Background(), file, folder)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to upload event image",
+				})
+			}
+			updateData["image"] = imageURL
+			event.Image = imageURL
+		}
+	}
+
+	// Handle flyer upload
+	flyerFile, err := c.FormFile("flyer")
+	if err == nil {
+		file, err := flyerFile.Open()
+		if err == nil {
+			defer file.Close()
+			folder := fmt.Sprintf("ticketing-app/events/%s/flyers", user.UserID)
+			flyerURL, err := config.UploadImage(context.Background(), file, folder)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to upload event flyer",
+				})
+			}
+			updateData["flyer"] = flyerURL
+			event.Flyer = flyerURL
+		}
+	}
+
+	// Update event
+	if err := tx.Model(&event).Updates(updateData).Error; err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to update event: " + err.Error(),
+		})
+	}
+
+	// Handle ticket categories update if provided
+	if ticketCategoriesJSON != "" {
+		var ticketCategories []TicketCategoryRequest
+		if err := json.Unmarshal([]byte(ticketCategoriesJSON), &ticketCategories); err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "Invalid ticket categories JSON format",
+			})
+		}
+
+		// Delete existing ticket categories
+		if err := tx.Where("event_id = ?", event.EventID).Delete(&models.TicketCategory{}).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to delete existing ticket categories",
+			})
+		}
+
+		// Create new ticket categories
+		for _, tcReq := range ticketCategories {
+			dateTimeStart, err := time.Parse(time.RFC3339, tcReq.DateTimeStart)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Invalid date_time_start format",
+				})
+			}
+
+			dateTimeEnd, err := time.Parse(time.RFC3339, tcReq.DateTimeEnd)
+			if err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Invalid date_time_end format",
+				})
+			}
+
+			ticketCategory := models.TicketCategory{
+				TicketCategoryID: utils.GenerateTicketCategoryID(),
+				EventID:          event.EventID,
+				Name:             tcReq.Name,
+				Price:            tcReq.Price,
+				Quota:            tcReq.Quota,
+				Description:      tcReq.Description,
+				DateTimeStart:    dateTimeStart,
+				DateTimeEnd:      dateTimeEnd,
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
+			}
+
+			if err := tx.Create(&ticketCategory).Error; err != nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+					"error": "Failed to create ticket category",
+				})
+			}
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to commit transaction",
+		})
+	}
+
+	// Reload event with relationships
+	var updatedEvent models.Event
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").
+		Where("event_id = ?", event.EventID).
+		First(&updatedEvent).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to load updated event data",
 		})
 	}
 
 	return c.JSON(fiber.Map{
 		"message": "Event updated successfully",
-		"event":   event,
+		"event":   updatedEvent,
 	})
 }
 
