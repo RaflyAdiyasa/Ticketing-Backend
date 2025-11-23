@@ -57,4 +57,9 @@ func SetupRoutes(app *fiber.App) {
 	payment := app.Group("/api/payment", middleware.AuthMiddleware)
 	payment.Post("/midtrans", handlers.PaymentMidtrans)
 	app.Post("/midtrans/callback", handlers.PaymentNotificationHandler)
+
+	// Transaction routes
+	transaction := app.Group("/api/transactions", middleware.AuthMiddleware)
+	transaction.Get("/", handlers.GetTransactionHistory)
+	transaction.Get("/:id", handlers.GetTransactionDetail)
 }
