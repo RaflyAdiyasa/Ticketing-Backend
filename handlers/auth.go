@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/joho/godotenv"
+	"gorm.io/gorm/clause"
 )
 
 type LoginRequest struct {
@@ -191,7 +192,7 @@ func DefaultAdminSetup() error {
 		UpdatedAt: time.Now(),
 	}
 
-	if err := config.DB.Create(&admin).Error; err != nil {
+	if err := config.DB.Clauses(clause.OnConflict{UpdateAll: true}).Create(&admin).Error; err != nil {
 		log.Fatal("Failed to create default admin user:", err)
 	}
 	log.Println("Default admin user created successfully, username:", df_admin_username)

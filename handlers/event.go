@@ -747,7 +747,7 @@ func DownloadEventReport(c *fiber.Ctx) error {
 	}
 
 	// Generate CSV report
-	csvData := "Kategori Tiket,Tiket Terjual,Tiket Check-in,Pendapatan Kategori\n"
+	csvData := "Kategori_Tiket,Tiket_Terjual,Persentase_Tiket_Terjual,Tiket_Check_in,Persentase_Tiket_Check_in,Kuota_Ticket,Pendapatan_Kategori\n"
 
 	// Hitung data per kategori
 	for _, ticketCategory := range event.TicketCategories {
@@ -755,27 +755,30 @@ func DownloadEventReport(c *fiber.Ctx) error {
 		var checkedInCount int64
 
 		config.DB.Model(&models.Ticket{}).
-			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "paid").
+			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "active").
 			Count(&soldCount)
 
 		config.DB.Model(&models.Ticket{}).
 			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "used").
 			Count(&checkedInCount)
 
+		checkInPercentage := float64(checkedInCount) / float64(soldCount) * 100
+		soldPercentage := float64(soldCount) / float64(ticketCategory.Quota) * 100
+
 		categoryIncome := float64(soldCount) * ticketCategory.Price
 
-		csvData += fmt.Sprintf("%s,%d,%d,%.2f\n",
-			ticketCategory.Name, soldCount, checkedInCount, categoryIncome)
+		csvData += fmt.Sprintf("%s,%d,%.2f%%,%d,%.2f%%,%d,%.2f\n",
+			ticketCategory.Name, soldCount, soldPercentage, checkedInCount, checkInPercentage, ticketCategory.Quota, categoryIncome)
 	}
 
 	// Tambahkan total keseluruhan
-	csvData += fmt.Sprintf("\nTotal Keseluruhan\n")
+	csvData += fmt.Sprintf("\nTotal Keseluruhan event %s\n", event.Name)
 	csvData += fmt.Sprintf("Total Tiket Terjual:,%d\n", event.TotalTicketsSold)
 	csvData += fmt.Sprintf("Total Check-in:,%d\n", event.TotalAttendant)
-	csvData += fmt.Sprintf("Total Pendapatan:,.2f\n", event.TotalSales)
+	csvData += fmt.Sprintf("Total Pendapatan:,%f\n", event.TotalSales)
 
 	c.Set("Content-Type", "text/csv")
-	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=report-%s.csv", eventID))
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=report_%s.csv", event.Name))
 
 	return c.SendString(csvData)
 }
