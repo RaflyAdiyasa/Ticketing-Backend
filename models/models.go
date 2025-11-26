@@ -5,29 +5,31 @@ import (
 )
 
 type User struct {
-	UserID                  string    `gorm:"primaryKey;type:char(60)" json:"user_id"`
-	Username                string    `gorm:"uniqueIndex;size:50" json:"username"`
-	Name                    string    `gorm:"size:100" json:"name"`
-	Email                   string    `gorm:"uniqueIndex;size:100" json:"email"`
-	Password                string    `gorm:"size:255" json:"-"`
-	Role                    string    `gorm:"size:20;default:user" json:"role"`
-	ProfilePict             string    `gorm:"size:255" json:"profile_pict"`
-	Organization            string    `gorm:"size:100" json:"organization"`
-	OrganizationType        string    `gorm:"size:50" json:"organization_type"`
-	OrganizationDescription string    `gorm:"type:text" json:"organization_description"`
-	KTP                     string    `gorm:"size:255" json:"ktp"`
-	RegisterStatus          string    `gorm:"size:20;default:pending" json:"register_status"`
-	RegisterComment         string    `gorm:"type:text" json:"register_comment"`
-	AccessToken             string    `gorm:"size:500" json:"-"`
-	RefreshToken            string    `gorm:"size:500" json:"-"`
-	CreatedAt               time.Time `json:"created_at"`
-	UpdatedAt               time.Time `json:"updated_at"`
+	UserID                  string `gorm:"primaryKey;type:char(60)" json:"user_id"`
+	Username                string `gorm:"uniqueIndex;size:50" json:"username"`
+	Name                    string `gorm:"size:100" json:"name"`
+	Email                   string `gorm:"uniqueIndex;size:100" json:"email"`
+	Password                string `gorm:"size:255" json:"-"`
+	Role                    string `gorm:"size:20;default:user" json:"role"`
+	ProfilePict             string `gorm:"size:255" json:"profile_pict"`
+	Organization            string `gorm:"size:100" json:"organization"`
+	OrganizationType        string `gorm:"size:50" json:"organization_type"`
+	OrganizationDescription string `gorm:"type:text" json:"organization_description"`
+	KTP                     string `gorm:"size:255" json:"ktp"`
+	RegisterStatus          string `gorm:"size:20;default:pending" json:"register_status"`
+	RegisterComment         string `gorm:"type:text" json:"register_comment"`
+	// TotalLikes              uint      `gorm:"default:0" json:"total_likes"`
+	AccessToken  string    `gorm:"size:500" json:"-"`
+	RefreshToken string    `gorm:"size:500" json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 
 	// Relationships
 	Events               []Event              `gorm:"foreignKey:OwnerID" json:"events,omitempty"`
 	Tickets              []Ticket             `gorm:"foreignKey:OwnerID" json:"tickets,omitempty"`
 	Carts                []Cart               `gorm:"foreignKey:OwnerID" json:"carts,omitempty"`
 	TransactionHistories []TransactionHistory `gorm:"foreignKey:OwnerID" json:"transaction_histories,omitempty"`
+	LikedEvents          []Event              `gorm:"many2many:event_likes;foreignKey:UserID;joinForeignKey:user_id;references:EventID;joinReferences:event_id" json:"liked_events,omitempty"`
 }
 
 type Event struct {
@@ -48,6 +50,7 @@ type Event struct {
 	Category         string    `gorm:"size:50" json:"category"`
 	ChildCategory    string    `gorm:"size:50" json:"child_category"`
 	TotalAttendant   uint      `gorm:"default:0" json:"total_attendant"`
+	TotalLikes       uint      `gorm:"default:0" json:"total_likes"`
 	TotalSales       float64   `gorm:"type:decimal(10,2);default:0" json:"total_sales"`
 	TotalTicketsSold uint      `gorm:"default:0" json:"total_tickets_sold"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -57,6 +60,7 @@ type Event struct {
 	Owner            User             `gorm:"foreignKey:OwnerID;references:UserID" json:"owner"`
 	TicketCategories []TicketCategory `gorm:"foreignKey:EventID" json:"ticket_categories,omitempty"`
 	Tickets          []Ticket         `gorm:"foreignKey:EventID" json:"tickets,omitempty"`
+	LikedBy          []User           `gorm:"many2many:event_likes;foreignKey:EventID;joinForeignKey:event_id;references:UserID;joinReferences:user_id" json:"liked_by,omitempty"`
 }
 
 type TicketCategory struct {
@@ -132,4 +136,12 @@ type TransactionDetail struct {
 
 	// Relationships
 	Owner User `gorm:"foreignKey:OwnerID" json:"owner"`
+}
+
+type EventLike struct {
+	UserID  string `gorm:"primaryKey;type:char(60);not null" json:"user_id"`
+	EventID string `gorm:"primaryKey;type:char(60);not null" json:"event_id"`
+
+	User  User  `gorm:"foreignKey:UserID;references:UserID" json:"user"`
+	Event Event `gorm:"foreignKey:EventID;references:EventID" json:"event"`
 }
