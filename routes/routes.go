@@ -38,6 +38,8 @@ func SetupRoutes(app *fiber.App) {
 	event.Get("/:id/report", handlers.GetEventReport)
 	event.Get("/:id/report/download", handlers.DownloadEventReport)
 	event.Patch("/:id/verify", middleware.AdminMiddleware, handlers.VerifyEvent)
+	event.Post("/:id/like", handlers.AddLike)
+	event.Get("/like", handlers.MyLikedEvent)
 
 	// Ticket routes
 	ticket := app.Group("/api/tickets", middleware.AuthMiddleware)

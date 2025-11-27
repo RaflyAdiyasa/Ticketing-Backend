@@ -27,10 +27,10 @@ type CreateEventRequest struct {
 	DateStart        string                  `json:"date_start"`
 	DateEnd          string                  `json:"date_end"`
 	Location         string                  `json:"location"`
-	Venue            string                  `json:"venue"`   
+	Venue            string                  `json:"venue"`
 	District         string                  `json:"district"`
 	Description      string                  `json:"description"`
-	Rules            string                  `json:"rules"` 
+	Rules            string                  `json:"rules"`
 	Category         string                  `json:"category"`
 	ChildCategory    string                  `json:"child_category"`
 	TicketCategories []TicketCategoryRequest `json:"ticket_categories"`
@@ -42,12 +42,12 @@ func CreateEvent(c *fiber.Ctx) error {
 	dateStartStr := c.FormValue("date_start")
 	dateEndStr := c.FormValue("date_end")
 	location := c.FormValue("location")
-	venue := c.FormValue("venue")       
-	district := c.FormValue("district")  
+	venue := c.FormValue("venue")
+	district := c.FormValue("district")
 	description := c.FormValue("description")
 	rules := c.FormValue("rules") // Tambahkan rules
 	category := c.FormValue("category")
-	childCategory := c.FormValue("child_category") 
+	childCategory := c.FormValue("child_category")
 	ticketCategoriesJSON := c.FormValue("ticket_categories")
 
 	var ticketCategories []TicketCategoryRequest
@@ -131,14 +131,15 @@ func CreateEvent(c *fiber.Ctx) error {
 		DateStart:     dateStart,
 		DateEnd:       dateEnd,
 		Location:      location,
-		Venue:         venue,        
-		District:      district,     
+		Venue:         venue,
+		District:      district,
 		Description:   description,
-		Rules:         rules, // Tambahkan rules
+		Rules:         rules,
+		TotalLikes:    0,
 		Image:         imageURL,
 		Flyer:         flyerURL,
 		Category:      category,
-		ChildCategory: childCategory, 
+		ChildCategory: childCategory,
 		CreatedAt:     time.Now(),
 		UpdatedAt:     time.Now(),
 	}
@@ -167,6 +168,13 @@ func CreateEvent(c *fiber.Ctx) error {
 				tx.Rollback()
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 					"error": "Invalid date_time_end format in ticket category: " + err.Error(),
+				})
+			}
+			var ticketName models.TicketCategory
+			if err := tx.First(&ticketName, "name = ?", tcReq.Name).Error; err == nil {
+				tx.Rollback()
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error": "Duplicate ticket category name : " + tcReq.Name,
 				})
 			}
 
@@ -487,7 +495,7 @@ func GetMyEvents(c *fiber.Ctx) error {
 
 func GetEvents(c *fiber.Ctx) error {
 	var events []models.Event
-	if err := config.DB.Preload("Owner").Preload("TicketCategories").Find(&events).Error; err != nil {
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").Preload("LikedBy").Find(&events).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch events",
 		})
@@ -590,7 +598,7 @@ func GetEventsPopular(c *fiber.Ctx) error {
 	var events []models.Event
 	if err := config.DB.Preload("Owner").Preload("TicketCategories").
 		Where("status = ?", "approved").
-		Order("total_tickets_sold DESC").
+		Order("total_likes DESC").
 		Limit(4).
 		Find(&events).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -611,6 +619,7 @@ type EventReportResponse struct {
 	TotalIncome      float64               `json:"total_income"`
 	TotalTicketsSold int                   `json:"total_tickets_sold"`
 	TotalCheckins    int                   `json:"total_checkins"`
+	TotalLikes       uint                  `json:"total_likes"`
 }
 
 type TicketCategoryStats struct {
@@ -716,6 +725,7 @@ func GetEventReport(c *fiber.Ctx) error {
 		CheckinData:      checkinData,
 		AttendantData:    attendantData,
 		TotalIncome:      event.TotalSales,
+		TotalLikes:       event.TotalLikes,
 		TotalTicketsSold: int(event.TotalTicketsSold),
 		TotalCheckins:    int(event.TotalAttendant),
 	}
@@ -776,9 +786,90 @@ func DownloadEventReport(c *fiber.Ctx) error {
 	csvData += fmt.Sprintf("Total Tiket Terjual:,%d\n", event.TotalTicketsSold)
 	csvData += fmt.Sprintf("Total Check-in:,%d\n", event.TotalAttendant)
 	csvData += fmt.Sprintf("Total Pendapatan:,%f\n", event.TotalSales)
+	csvData += fmt.Sprintf("Total Like:,%d\n", event.TotalLikes)
 
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=report_%s.csv", event.Name))
 
 	return c.SendString(csvData)
+}
+
+func AddLike(c *fiber.Ctx) error {
+	eventID := c.Params("id")
+	user := c.Locals("user").(models.User)
+
+	var event models.Event
+	if err := config.DB.Where("event_id = ?", eventID).First(&event).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Event not found",
+		})
+	}
+
+	var existingLike models.EventLike
+	if err := config.DB.Where("user_id = ? AND event_id = ?", user.UserID, eventID).First(&existingLike).Error; err == nil {
+
+		if err := config.DB.Delete(&existingLike).Error; err != nil {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "Cannot un-like ",
+			})
+
+		}
+
+		event.TotalLikes--
+
+		if err := config.DB.Save(event).Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to decrease like counts: " + err.Error(),
+			})
+		}
+
+		return c.Status(fiber.StatusContinue).JSON(fiber.Map{
+			"Message": "Undo",
+		})
+
+	}
+
+	eventLike := models.EventLike{
+		UserID:  user.UserID,
+		EventID: eventID,
+	}
+
+	if err := config.DB.Create(&eventLike).Error; err != nil {
+		log.Printf("Error creating like: %v", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to like event: " + err.Error(),
+		})
+	}
+
+	event.TotalLikes++
+
+	if err := config.DB.Save(event).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "Failed to add like counts: " + err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message":          "Liked It",
+		"event_total_like": event.TotalLikes,
+	})
+}
+
+func MyLikedEvent(c *fiber.Ctx) error {
+	user := c.Locals("user").(models.User)
+
+	var userFigure models.User
+	if err := config.DB.Model(&models.User{}).Preload("LikedEvents").Where("user_id = ?", user.UserID).Find(&userFigure).Error; err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": "Users event not found",
+		})
+	}
+
+	var number_of_likes = len(userFigure.LikedEvents)
+	return c.JSON(fiber.Map{
+		"message":         "Successfully",
+		"number_of_likes": number_of_likes,
+		"liked_event":     userFigure.LikedEvents,
+	})
+
 }
