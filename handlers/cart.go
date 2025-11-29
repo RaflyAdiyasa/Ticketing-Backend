@@ -13,13 +13,13 @@ import (
 func AddToCart(c *fiber.Ctx) error {
 	user := c.Locals("user").(models.User)
 
-	if user.Role != "admin" {
+	if user.Role == "admin" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Admin can't item to cart",
 		})
 	}
 
-	if user.Role != "organizer" {
+	if user.Role == "organizer" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "EO can't item to cart",
 		})
