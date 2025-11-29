@@ -106,6 +106,7 @@ func PaymentMidtrans(c *fiber.Ctx) error {
 	for _, detail := range transactionDetails {
 		// Set transaction ID untuk detail
 		detail.TransactionID = transaction.TransactionID
+		var statusTicket string = "pending"
 
 		if err := tx.Create(&detail).Error; err != nil {
 			tx.Rollback()
@@ -123,14 +124,50 @@ func PaymentMidtrans(c *fiber.Ctx) error {
 			})
 		}
 
+		if detail.Subtotal == 0 {
+			statusTicket = "active"
+
+			if err := tx.Model(&models.TicketCategory{}).
+				Where("ticket_category_id = ?", detail.TicketCategoryID).
+				Update("sold", gorm.Expr("sold + ?", detail.Quantity)).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Failed to update ticket category sold count: %v", err)
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to update ticket category"})
+
+			}
+
+			var TicketCategories models.TicketCategory
+			if err := tx.First(&TicketCategories, "ticket_category_id = ?", detail.TicketCategoryID).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Failed to get ticket category: %v", err)
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to get ticket category"})
+			}
+
+			var event models.Event
+			if err := tx.First(&event, "event_id = ?", TicketCategories.EventID).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Failed to get event: %v", err)
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to get event"})
+			}
+
+			if err := tx.Model(&models.Event{}).
+				Where("event_id = ?", event.EventID).
+				Update("total_tickets_sold", gorm.Expr("total_tickets_sold + ?", detail.Quantity)).Error; err != nil {
+				tx.Rollback()
+				log.Printf("Failed to update event sold count: %v", err)
+				return c.Status(500).JSON(fiber.Map{"error": "Failed to update event sold count"})
+			}
+		}
+
 		// Create pending tickets - FIX: Generate unique code untuk setiap ticket
 		for i := 0; i < int(detail.Quantity); i++ {
+
 			ticket := models.Ticket{
 				TicketID:         utils.GenerateTicketID(),
 				EventID:          ticketCategory.EventID,
 				TicketCategoryID: detail.TicketCategoryID,
 				OwnerID:          user.UserID,
-				Status:           "pending",
+				Status:           statusTicket,
 				Code:             utils.GenerateTicketCode(), // GENERATE UNIQUE CODE
 				CreatedAt:        time.Now(),
 				UpdatedAt:        time.Now(),
@@ -170,12 +207,14 @@ func PaymentMidtrans(c *fiber.Ctx) error {
 	// Prepare items untuk Midtrans
 	var items []midtrans.ItemDetails
 	for _, item := range cartItems {
-		items = append(items, midtrans.ItemDetails{
-			ID:    item.TicketCategoryID,
-			Name:  item.TicketCategoryName,
-			Price: int64(item.PricePerItem),
-			Qty:   int32(item.Quantity),
-		})
+		if item.PricePerItem != 0 {
+			items = append(items, midtrans.ItemDetails{
+				ID:    item.TicketCategoryID,
+				Name:  item.TicketCategoryName,
+				Price: int64(item.PricePerItem),
+				Qty:   int32(item.Quantity),
+			})
+		}
 	}
 
 	req := &snap.Request{
@@ -190,6 +229,22 @@ func PaymentMidtrans(c *fiber.Ctx) error {
 		Items: &items,
 	}
 
+	if req.TransactionDetails.GrossAmt == 0 {
+
+		if err := config.DB.Model(&transaction).Where("transaction_id = ?", transaction.TransactionID).Update("transaction_status", "paid").Error; err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed obtain free ticket: " + err.Error(),
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
+			"message":        "Free ticket added successfully",
+			"transaction_id": transaction.TransactionID,
+			"total":          total,
+			"payment_url":    "non",
+			"token":          "non",
+		})
+	}
 	// Create Midtrans transaction
 	snapResp, err := s.CreateTransaction(req)
 	if err != nil {
