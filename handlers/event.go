@@ -789,13 +789,13 @@ func AddLike(c *fiber.Ctx) error {
 	eventID := c.Params("id")
 	user := c.Locals("user").(models.User)
 
-	if user.Role != "admin" {
+	if user.Role == "admin" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "User only",
 		})
 	}
 
-	if user.Role != "organizer" {
+	if user.Role == "organizer" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "User only",
 		})
