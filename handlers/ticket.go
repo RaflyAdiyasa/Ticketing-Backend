@@ -19,8 +19,8 @@ type ticketResponse struct {
 	TicketCategory *ticketCategoryResponse `json:"ticket_category"`
 	Event          *eventResponse          `json:"event"`
 	Tag            string                  `json:"tag"`
-	Status         string                  `json:"status"`    // ADDED: Status tiket
-	UsedAt         *time.Time              `json:"used_at"`   // ADDED: Waktu check-in
+	Status         string                  `json:"status"`     // ADDED: Status tiket
+	UsedAt         *time.Time              `json:"used_at"`    // ADDED: Waktu check-in
 	CreatedAt      time.Time               `json:"created_at"` // ADDED: Waktu pembuatan
 }
 
@@ -233,6 +233,8 @@ func CheckInTicket(c *fiber.Ctx) error {
 			"status":          ticket.Status,
 			"checked_in_at":   ticket.UpdatedAt,
 			"ticket_category": ticketCategory.Name,
+			"date_start":      ticketCategory.DateTimeStart,
+			"date_end":        ticketCategory.DateTimeEnd,
 			"event_name":      event.Name,
 		},
 	})
