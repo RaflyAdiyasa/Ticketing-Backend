@@ -147,13 +147,15 @@ type EventLike struct {
 }
 
 type Feedback struct {
-	FeedbackID       string `gorm:"primaryKey;type:char(60);not null" json:"feedback_id"`
-	OwnerID          string `gorm:"column:owner_id;type:char(60);not null" json:"owner_id"`
-	FeedbackCategory string `gorm:"type:char(40);not null" json:"feedback_category"`
-	Status           string `gorm:"size:20;default:active" json:"status"`
-	Comment          string `gorm:"type:text" json:"comment"`
-	Image            string `gorm:"size:255" json:"image"`
-	Reply            string `gorm:"type:text" json:"reply"`
+	FeedbackID       string    `gorm:"primaryKey;type:char(60);not null" json:"feedback_id"`
+	OwnerID          string    `gorm:"column:owner_id;type:char(60);not null" json:"owner_id"`
+	FeedbackCategory string    `gorm:"type:char(40);not null" json:"feedback_category"`
+	Status           string    `gorm:"size:20;default:active" json:"status"`
+	Comment          string    `gorm:"type:text" json:"comment"`
+	Image            string    `gorm:"size:255" json:"image"`
+	Reply            string    `gorm:"type:text" json:"reply"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 
 	User User `gorm:"foreignKey:OwnerID;reference:UserID" json:"user,omitempty"`
 }
