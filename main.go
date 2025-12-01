@@ -50,7 +50,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":3000" // default untuk local & Docker
+		port = ":8080" // default untuk local & Docker
 	}
 
 	log.Println("Server running on port ", port)
