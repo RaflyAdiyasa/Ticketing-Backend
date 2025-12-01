@@ -50,11 +50,14 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = ":8080" // default untuk local & Docker
+		port = "8080"
 	}
 
-	log.Println("Server running on port ", port)
-	log.Fatal(app.Listen(port))
+	address := "0.0.0.0:" + port
+	log.Println("Server running on", address)
+
+	log.Fatal(app.Listen(address))
+
 }
 
 func migrateDatabase(db *gorm.DB) error {
