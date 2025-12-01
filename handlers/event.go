@@ -458,7 +458,7 @@ func UpdateEvent(c *fiber.Ctx) error {
 
 func GetApprovedEvents(c *fiber.Ctx) error {
 	var events []models.Event
-	if err := config.DB.Preload("Owner").Preload("TicketCategories").Where("status = ?", "approved").Find(&events).Error; err != nil {
+	if err := config.DB.Preload("Owner").Preload("TicketCategories").Where("status IN (?)", []string{"active", "approved", "ended"}).Find(&events).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to fetch events",
 		})
@@ -857,8 +857,6 @@ func DownloadEventReport(c *fiber.Ctx) error {
 
 	return c.SendString(csvData)
 }
-
-
 
 func AddLike(c *fiber.Ctx) error {
 	eventID := c.Params("id")
