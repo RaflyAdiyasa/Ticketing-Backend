@@ -648,10 +648,10 @@ func GetEventReport(c *fiber.Ctx) error {
 		})
 	}
 
-	// Initialize data arrays
-	var purchaseData []TicketCategoryStats
-	var checkinData []TicketCategoryStats
-	var attendantData []TicketCategoryStats
+	// Initialize data arrays - gunakan make untuk memastikan tidak nil
+	purchaseData := make([]TicketCategoryStats, 0)
+	checkinData := make([]TicketCategoryStats, 0)
+	attendantData := make([]TicketCategoryStats, 0)
 
 	// Calculate totals
 	var totalSold int64 = 0
@@ -659,30 +659,18 @@ func GetEventReport(c *fiber.Ctx) error {
 	var totalQuota int = 0
 	var totalIncome float64 = 0
 
-	// Calculate data per category
+	// Log untuk debug
+	log.Printf("Event ID: %s, TicketCategories count: %d", eventID, len(event.TicketCategories))
+
+	// Calculate data per category - langsung dari TicketCategory
 	for _, ticketCategory := range event.TicketCategories {
-		var soldCount int64
-		var checkedInCount int64
+		// Langsung ambil dari field Sold dan Attendant di TicketCategory
+		soldCount := int64(ticketCategory.Sold)
+		checkedInCount := int64(ticketCategory.Attendant)
 
-		// Count sold tickets - include both active and used status
-		config.DB.Model(&models.Ticket{}).
-			Where("ticket_category_id = ? AND status IN (?, ?)", ticketCategory.TicketCategoryID, "active", "used").
-			Count(&soldCount)
-
-		// Count checked-in tickets (status = used)
-		config.DB.Model(&models.Ticket{}).
-			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "used").
-			Count(&checkedInCount)
-
-		// Gunakan nilai yang lebih besar antara query dan field Sold untuk konsistensi
-		if int64(ticketCategory.Sold) > soldCount {
-			soldCount = int64(ticketCategory.Sold)
-		}
-
-		// Gunakan nilai yang lebih besar antara query dan field Attendant
-		if int64(ticketCategory.Attendant) > checkedInCount {
-			checkedInCount = int64(ticketCategory.Attendant)
-		}
+		// Log untuk debug setiap kategori
+		log.Printf("Category: %s, Sold: %d, Attendant: %d, Quota: %d, Price: %.2f",
+			ticketCategory.Name, soldCount, checkedInCount, ticketCategory.Quota, ticketCategory.Price)
 
 		// Calculate percentage of sold tickets for this category
 		soldPercentage := float64(0)
@@ -696,6 +684,9 @@ func GetEventReport(c *fiber.Ctx) error {
 			checkinPercentage = (float64(checkedInCount) / float64(soldCount)) * 100
 		}
 
+		// Calculate income for this category
+		categoryIncome := float64(soldCount) * ticketCategory.Price
+
 		purchaseData = append(purchaseData, TicketCategoryStats{
 			Name:       ticketCategory.Name,
 			Value:      int(soldCount),
@@ -707,14 +698,14 @@ func GetEventReport(c *fiber.Ctx) error {
 		checkinData = append(checkinData, TicketCategoryStats{
 			Name:       ticketCategory.Name,
 			Value:      int(checkedInCount),
-			Quota:      int(soldCount), 
+			Quota:      int(soldCount),
 			Price:      ticketCategory.Price,
 			Percentage: checkinPercentage,
 		})
 
 		attendantData = append(attendantData, TicketCategoryStats{
 			Name:       ticketCategory.Name,
-			Value:      int(ticketCategory.Attendant),
+			Value:      int(checkedInCount),
 			Quota:      int(ticketCategory.Quota),
 			Price:      ticketCategory.Price,
 			Percentage: checkinPercentage,
@@ -723,19 +714,12 @@ func GetEventReport(c *fiber.Ctx) error {
 		totalSold += soldCount
 		totalCheckedIn += checkedInCount
 		totalQuota += int(ticketCategory.Quota)
-		totalIncome += float64(soldCount) * ticketCategory.Price
+		totalIncome += categoryIncome
 	}
 
-	// Gunakan nilai dari event jika lebih besar (untuk konsistensi)
-	if int64(event.TotalTicketsSold) > totalSold {
-		totalSold = int64(event.TotalTicketsSold)
-	}
-	if int64(event.TotalAttendant) > totalCheckedIn {
-		totalCheckedIn = int64(event.TotalAttendant)
-	}
-	if event.TotalSales > totalIncome {
-		totalIncome = event.TotalSales
-	}
+	// Log totals untuk debug
+	log.Printf("Totals - Sold: %d, CheckedIn: %d, Quota: %d, Income: %.2f",
+		totalSold, totalCheckedIn, totalQuota, totalIncome)
 
 	// Calculate overall metrics
 	soldPercentage := "0%"
@@ -806,28 +790,15 @@ func DownloadEventReport(c *fiber.Ctx) error {
 	var grandTotalQuota int64 = 0
 	var grandTotalIncome float64 = 0
 
-	// Calculate data per category
+	// Calculate data per category - langsung dari TicketCategory
 	for _, ticketCategory := range event.TicketCategories {
-		var soldCount int64
-		var checkedInCount int64
+		// Langsung ambil dari field Sold dan Attendant di TicketCategory
+		soldCount := int64(ticketCategory.Sold)
+		checkedInCount := int64(ticketCategory.Attendant)
 
-		// Count sold tickets - include both active and used status (konsisten dengan GetEventReport)
-		config.DB.Model(&models.Ticket{}).
-			Where("ticket_category_id = ? AND status IN (?, ?)", ticketCategory.TicketCategoryID, "active", "used").
-			Count(&soldCount)
-
-		// Count checked-in tickets
-		config.DB.Model(&models.Ticket{}).
-			Where("ticket_category_id = ? AND status = ?", ticketCategory.TicketCategoryID, "used").
-			Count(&checkedInCount)
-
-		// Gunakan nilai yang lebih besar untuk konsistensi
-		if int64(ticketCategory.Sold) > soldCount {
-			soldCount = int64(ticketCategory.Sold)
-		}
-		if int64(ticketCategory.Attendant) > checkedInCount {
-			checkedInCount = int64(ticketCategory.Attendant)
-		}
+		// Log untuk debug
+		log.Printf("Download Report - Category: %s, Sold: %d, Attendant: %d",
+			ticketCategory.Name, soldCount, checkedInCount)
 
 		// Handle division by zero
 		soldPercentage := float64(0)
@@ -886,6 +857,7 @@ func DownloadEventReport(c *fiber.Ctx) error {
 
 	return c.SendString(csvData)
 }
+
 
 
 func AddLike(c *fiber.Ctx) error {
